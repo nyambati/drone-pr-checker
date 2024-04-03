@@ -7,14 +7,15 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
 type State int
 
 const (
-	Err State = iota
-	Success
+	Success State = iota
+	Err
 	Skip
 )
 
@@ -24,15 +25,17 @@ type Step struct {
 	status  State
 	message string
 	id      string
+	exit    bool
 }
 
 type Settings struct {
-	titlePrefixes    string
-	titleRegexep     string
-	ignoreOnLabels   string
-	checklist        bool
-	pullRequestTitle string
-	checkListTitle   string
+	titlePrefixes       string
+	titleRegexep        string
+	skipOnLabels        string
+	ignoreOnGitHubError bool
+	checklist           bool
+	pullRequestTitle    string
+	checkListTitle      string
 }
 
 type PullRequestChecker struct {
@@ -65,6 +68,7 @@ func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
 			message: fmt.Sprintf("PR title does not have any required prefix %s", prc.settings.titlePrefixes),
 		},
 	)
+	prc.errors++
 	return prc
 }
 
@@ -87,6 +91,7 @@ func (prc *PullRequestChecker) CheckPRTitleRegexep() *PullRequestChecker {
 				id:      "regexep",
 			},
 		)
+		prc.errors++
 		return prc
 	}
 
@@ -96,67 +101,98 @@ func (prc *PullRequestChecker) CheckPRTitleRegexep() *PullRequestChecker {
 
 func (prc *PullRequestChecker) CheckPRLabels() *PullRequestChecker {
 
-	if prc.settings.ignoreOnLabels == "" {
+	if prc.settings.skipOnLabels == "" {
 		prc.steps = append(prc.steps, Step{status: Skip, message: "No labels to check", id: "labels"})
 		return prc
 	}
 
-	labelsToIgnore := strings.Split(prc.settings.ignoreOnLabels, ",")
-	labels, err := prc.github.getPRLabels()
+	labelsToIgnore := strings.Split(prc.settings.skipOnLabels, ",")
+
+	pr, err := prc.github.GetPullRequest()
 
 	if err != nil {
-		step := Step{status: Err, message: err.Error(), id: "labels"}
-		fmt.Println("❌", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
-		os.Exit(1)
+		switch prc.settings.ignoreOnGitHubError {
+		case true:
+			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: "labels"})
+			return prc
+		default:
+			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: "labels"})
+			prc.errors++
+			return prc
+		}
+	}
+
+	labels := []string{}
+
+	for _, label := range pr.Labels {
+		labels = append(labels, label.Name)
 	}
 
 	for _, label := range labelsToIgnore {
-		for _, l := range labels {
-			if l == label {
-				step := Step{status: Success, message: "Skipping checks, ignore label detected", id: "labels"}
-				fmt.Println("🦘", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
-				os.Exit(0)
-			}
+		if slices.Contains(labels, label) {
+			prc.steps = append(
+				prc.steps,
+				Step{
+					status:  Skip,
+					message: "Skipping, detected skip label",
+					id:      "labels",
+					exit:    true,
+				},
+			)
+			return prc
 		}
 	}
+
+	prc.steps = append(prc.steps, Step{status: Success, message: "No skip labels detected", id: "labels"})
 	return prc
 }
 
 func (prc *PullRequestChecker) CheckPRChecklist() *PullRequestChecker {
 
 	if !prc.settings.checklist {
-		prc.steps = append(prc.steps, Step{status: Skip, message: "No checklist to check", id: "checklist"})
+		prc.steps = append(prc.steps, Step{status: Skip, message: "Checklist checks disabled", id: "checklist"})
 		return prc
 	}
 
-	readme, err := os.ReadFile("README.md")
+	pr, err := prc.github.GetPullRequest()
 
 	if err != nil {
-		prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: "checklist"})
-		return prc
+		switch prc.settings.ignoreOnGitHubError {
+		case true:
+			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: "checklist"})
+			return prc
+		default:
+			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: "checklist"})
+			prc.errors++
+			return prc
+		}
 	}
 
 	re := regexp.MustCompile(fmt.Sprintf(`(?s)%s.*?((?:(?:- \[[ x]\] .+?)(?:\n|$))+)`, prc.settings.checkListTitle))
 
 	// Find the checklist section
-	checklistSection := re.FindStringSubmatch(string(readme))
+	checklistSection := re.FindStringSubmatch(pr.Body)
 
 	if len(checklistSection) > 1 {
 		// Extract matched items
-		checklistItemsRe := regexp.MustCompile(`- \[[ x]\] (.+)`)
+		checklistItemsRe := regexp.MustCompile(`- \[[ ]\] (.+)`)
 		checklistItems := checklistItemsRe.FindAllStringSubmatch(checklistSection[1], -1)
-		prc.steps = append(
-			prc.steps,
-			Step{
-				status:  Err,
-				message: fmt.Sprintf("Found %d unchecked checklist items", len(checklistItems)),
-				id:      "checklist",
-			},
-		)
-		return prc
+		if len(checklistItems) > 1 {
+			prc.steps = append(
+				prc.steps,
+				Step{
+					status:  Err,
+					message: fmt.Sprintf("Found %d unchecked checklist items", len(checklistItems)),
+					id:      "checklist",
+				},
+			)
+			prc.errors++
+			return prc
+		}
+
 	}
 
-	prc.steps = append(prc.steps, Step{status: Success, message: "all checklist items are checked", id: "checklist"})
+	prc.steps = append(prc.steps, Step{status: Success, message: "Found 0 unchecked checklist items", id: "checklist"})
 	return prc
 }
 
@@ -186,19 +222,21 @@ func GetEnvVar(name, defaultValue string) string {
 
 func readPRCheckerSettings() Settings {
 	prefixes := GetEnvVar("PLUGIN_PREFIXES", "")
-	labels := GetEnvVar("PLUGIN_IGNORE_ON_LABELS", "")
+	labels := GetEnvVar("PLUGIN_SKIP_ON_LABELS", "")
+	ignoreOnGitHubError := GetEnvVar("PLUGIN_IGNORE_ON_GITHUB_ERRORS", "false") == "true"
 	checklist := GetEnvVar("PLUGIN_CHECKLIST", "false") == "true"
 	regex := GetEnvVar("PLUGIN_TITLE_REGEXEP", "")
-	pullRequestTitle := GetEnvVar("PULL_REQUEST_TITLE", "")
+	pullRequestTitle := GetEnvVar("DRONE_PULL_REQUEST_TITLE", "")
 	checkListTitle := GetEnvVar("PLUGIN_CHECKLIST_TITLE", "## Checklist")
 
 	return Settings{
-		titlePrefixes:    prefixes,
-		titleRegexep:     regex,
-		ignoreOnLabels:   labels,
-		checklist:        checklist,
-		pullRequestTitle: pullRequestTitle,
-		checkListTitle:   checkListTitle,
+		titlePrefixes:       prefixes,
+		titleRegexep:        regex,
+		skipOnLabels:        labels,
+		checklist:           checklist,
+		pullRequestTitle:    pullRequestTitle,
+		checkListTitle:      checkListTitle,
+		ignoreOnGitHubError: ignoreOnGitHubError,
 	}
 }
 

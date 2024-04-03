@@ -20,15 +20,19 @@ func TestNewGithub(t *testing.T) {
 	assert.Equal(t, github, &Client{Http: &http.Client{}, URL: url, token: "token"})
 }
 
-func TestClient_getPRLabels(t *testing.T) {
+func TestClient_getPullRequest(t *testing.T) {
 	defer gock.Off() // Flush pending mocks after test execution
+	prData := PullRequest{
+		Labels: []Label{{Name: "label 1"}, {Name: "label 2"}},
+		Body:   "body",
+	}
 	gock.New("http://localhost").
 		MatchHeader("Authorization", "Bearer token").
 		MatchHeader("Accept", "application/vnd.github+json").
 		MatchHeader("X-GitHub-Api-Version", "2022-11-28").
 		Get("/repos/sample/pulls/1").
 		Reply(200).
-		JSON(map[string]interface{}{"labels": []Label{{Name: "label1"}, {Name: "label2"}}})
+		JSON(prData)
 
 	github := NewGithub(
 		&url.URL{
@@ -39,14 +43,13 @@ func TestClient_getPRLabels(t *testing.T) {
 		"token",
 	)
 
-	labels, err := github.getPRLabels()
+	pr, err := github.GetPullRequest()
 
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	expectedLabels := []string{"label1", "label2"}
-	if !reflect.DeepEqual(labels, expectedLabels) {
-		t.Errorf("Expected labels %v, but got %v", expectedLabels, labels)
+	if !reflect.DeepEqual(pr, prData) {
+		t.Errorf("Expected labels %v, but got %v", prData, pr)
 	}
 }
