@@ -19,7 +19,7 @@ func main() {
 		Path:   fmt.Sprintf("/repos/%s/pulls/%s", repo, pull_request),
 	}
 
-	prc := internal.NewPullRequestChecker(url, token)
+	prc := internal.NewPlugin(url, token)
 
 	prc.CheckPRLabels().
 		CheckPRTitlePrefixes().

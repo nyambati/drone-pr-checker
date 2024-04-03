@@ -29,13 +29,13 @@ type Step struct {
 }
 
 type Settings struct {
-	titlePrefixes       string
-	titleRegexep        string
-	skipOnLabels        string
-	ignoreOnGitHubError bool
-	checklist           bool
-	pullRequestTitle    string
-	checkListTitle      string
+	prefixes          string
+	regexp            string
+	skipOnLabels      string
+	ignoreGitHubError bool
+	checklist         bool
+	title             string
+	checklistTitle    string
 }
 
 type PullRequestChecker struct {
@@ -45,17 +45,25 @@ type PullRequestChecker struct {
 	github   GitHub
 }
 
+type Plugin interface {
+	Report()
+	CheckPrTitlePrefixes() *PullRequestChecker
+	CheckPRChecklist() *PullRequestChecker
+	CheckPRLabels() *PullRequestChecker
+	CheckPRTitleRegexep() *PullRequestChecker
+}
+
 func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
-	if prc.settings.titlePrefixes == "" {
-		prc.steps = append(prc.steps, Step{status: Skip, message: "No prefixes to check", id: "prefix"})
+	if prc.settings.prefixes == "" {
+		prc.steps = append(prc.steps, Step{status: Skip, message: PrefixSkipMsg, id: PrefixStepID})
 		return prc
 	}
 
-	prefixes := strings.Split(prc.settings.titlePrefixes, ",")
+	prefixes := strings.Split(prc.settings.prefixes, ",")
 
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(prc.settings.pullRequestTitle, prefix) {
-			prc.steps = append(prc.steps, Step{status: Success, message: "PR title has required prefix", id: "prefix"})
+		if strings.HasPrefix(prc.settings.title, prefix) {
+			prc.steps = append(prc.steps, Step{status: Success, message: PrefixSuccesMsg, id: PrefixStepID})
 			return prc
 		}
 	}
@@ -64,8 +72,8 @@ func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
 		prc.steps,
 		Step{
 			status:  Err,
-			id:      "prefix",
-			message: fmt.Sprintf("PR title does not have any required prefix %s", prc.settings.titlePrefixes),
+			id:      PrefixStepID,
+			message: fmt.Sprintf(PrefixErrMsg, prc.settings.prefixes),
 		},
 	)
 	prc.errors++
@@ -74,35 +82,28 @@ func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
 
 func (prc *PullRequestChecker) CheckPRTitleRegexep() *PullRequestChecker {
 
-	if prc.settings.titleRegexep == "" {
-		prc.steps = append(prc.steps, Step{status: Skip, message: "No regexep to check", id: "regexep"})
+	if prc.settings.regexp == "" {
+		prc.steps = append(prc.steps, Step{status: Skip, message: RegexpSkipMsg, id: RegexpStepID})
 		return prc
 	}
 
 	// run regex against pull request title
-	regex := regexp.MustCompile(prc.settings.titleRegexep)
+	regex := regexp.MustCompile(prc.settings.regexp)
 
-	if !regex.MatchString(prc.settings.pullRequestTitle) {
-		prc.steps = append(
-			prc.steps,
-			Step{
-				status:  Err,
-				message: "PR title does not match specified regular expression",
-				id:      "regexep",
-			},
-		)
+	if !regex.MatchString(prc.settings.title) {
+		prc.steps = append(prc.steps, Step{status: Err, message: RegexpErrMsg, id: RegexpStepID})
 		prc.errors++
 		return prc
 	}
 
-	prc.steps = append(prc.steps, Step{status: Success, message: "Regular expression check passed", id: "regexep"})
+	prc.steps = append(prc.steps, Step{status: Success, message: RegexpSuccesMsg, id: RegexpStepID})
 	return prc
 }
 
 func (prc *PullRequestChecker) CheckPRLabels() *PullRequestChecker {
 
 	if prc.settings.skipOnLabels == "" {
-		prc.steps = append(prc.steps, Step{status: Skip, message: "No labels to check", id: "labels"})
+		prc.steps = append(prc.steps, Step{status: Skip, message: LabelsSkipMsg, id: LabelsStepID})
 		return prc
 	}
 
@@ -111,12 +112,12 @@ func (prc *PullRequestChecker) CheckPRLabels() *PullRequestChecker {
 	pr, err := prc.github.GetPullRequest()
 
 	if err != nil {
-		switch prc.settings.ignoreOnGitHubError {
+		switch prc.settings.ignoreGitHubError {
 		case true:
-			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: "labels"})
+			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: LabelsStepID})
 			return prc
 		default:
-			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: "labels"})
+			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: LabelsStepID})
 			prc.errors++
 			return prc
 		}
@@ -134,8 +135,8 @@ func (prc *PullRequestChecker) CheckPRLabels() *PullRequestChecker {
 				prc.steps,
 				Step{
 					status:  Skip,
-					message: "Skipping, detected skip label",
-					id:      "labels",
+					message: LabelsSkipMsg,
+					id:      LabelsStepID,
 					exit:    true,
 				},
 			)
@@ -143,32 +144,32 @@ func (prc *PullRequestChecker) CheckPRLabels() *PullRequestChecker {
 		}
 	}
 
-	prc.steps = append(prc.steps, Step{status: Success, message: "No skip labels detected", id: "labels"})
+	prc.steps = append(prc.steps, Step{status: Success, message: LabelsSuccesMsg, id: LabelsStepID})
 	return prc
 }
 
 func (prc *PullRequestChecker) CheckPRChecklist() *PullRequestChecker {
 
 	if !prc.settings.checklist {
-		prc.steps = append(prc.steps, Step{status: Skip, message: "Checklist checks disabled", id: "checklist"})
+		prc.steps = append(prc.steps, Step{status: Skip, message: ChecklistSkipMsg, id: ChecklistStepID})
 		return prc
 	}
 
 	pr, err := prc.github.GetPullRequest()
 
 	if err != nil {
-		switch prc.settings.ignoreOnGitHubError {
+		switch prc.settings.ignoreGitHubError {
 		case true:
-			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: "checklist"})
+			prc.steps = append(prc.steps, Step{status: Skip, message: err.Error(), id: ChecklistStepID})
 			return prc
 		default:
-			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: "checklist"})
+			prc.steps = append(prc.steps, Step{status: Err, message: err.Error(), id: ChecklistStepID})
 			prc.errors++
 			return prc
 		}
 	}
 
-	re := regexp.MustCompile(fmt.Sprintf(`(?s)%s.*?((?:(?:- \[[ x]\] .+?)(?:\n|$))+)`, prc.settings.checkListTitle))
+	re := regexp.MustCompile(fmt.Sprintf(`(?s)%s.*?((?:(?:- \[[ x]\] .+?)(?:\n|$))+)`, prc.settings.checklistTitle))
 
 	// Find the checklist section
 	checklistSection := re.FindStringSubmatch(pr.Body)
@@ -182,8 +183,8 @@ func (prc *PullRequestChecker) CheckPRChecklist() *PullRequestChecker {
 				prc.steps,
 				Step{
 					status:  Err,
-					message: fmt.Sprintf("Found %d unchecked checklist items", len(checklistItems)),
-					id:      "checklist",
+					message: fmt.Sprintf(ChecklistErrMsg, len(checklistItems)),
+					id:      ChecklistStepID,
 				},
 			)
 			prc.errors++
@@ -192,7 +193,7 @@ func (prc *PullRequestChecker) CheckPRChecklist() *PullRequestChecker {
 
 	}
 
-	prc.steps = append(prc.steps, Step{status: Success, message: "Found 0 unchecked checklist items", id: "checklist"})
+	prc.steps = append(prc.steps, Step{status: Success, message: ChecklistSuccesMsg, id: ChecklistStepID})
 	return prc
 }
 
@@ -223,24 +224,24 @@ func GetEnvVar(name, defaultValue string) string {
 func readPRCheckerSettings() Settings {
 	prefixes := GetEnvVar("PLUGIN_PREFIXES", "")
 	labels := GetEnvVar("PLUGIN_SKIP_ON_LABELS", "")
-	ignoreOnGitHubError := GetEnvVar("PLUGIN_IGNORE_ON_GITHUB_ERRORS", "false") == "true"
+	ignoreGitHubError := GetEnvVar("PLUGIN_IGNORE_ON_GITHUB_ERRORS", "false") == "true"
 	checklist := GetEnvVar("PLUGIN_CHECKLIST", "false") == "true"
-	regex := GetEnvVar("PLUGIN_TITLE_REGEXEP", "")
+	regex := GetEnvVar("PLUGIN_TITLE_REGEXP", "")
 	pullRequestTitle := GetEnvVar("DRONE_PULL_REQUEST_TITLE", "")
 	checkListTitle := GetEnvVar("PLUGIN_CHECKLIST_TITLE", "## Checklist")
 
 	return Settings{
-		titlePrefixes:       prefixes,
-		titleRegexep:        regex,
-		skipOnLabels:        labels,
-		checklist:           checklist,
-		pullRequestTitle:    pullRequestTitle,
-		checkListTitle:      checkListTitle,
-		ignoreOnGitHubError: ignoreOnGitHubError,
+		prefixes:          prefixes,
+		regexp:            regex,
+		skipOnLabels:      labels,
+		checklist:         checklist,
+		title:             pullRequestTitle,
+		checklistTitle:    checkListTitle,
+		ignoreGitHubError: ignoreGitHubError,
 	}
 }
 
-func NewPullRequestChecker(url *url.URL, token string) PullRequestChecker {
+func NewPlugin(url *url.URL, token string) PullRequestChecker {
 	return PullRequestChecker{
 		steps:    []Step{},
 		errors:   0,

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"net/url"
 	"reflect"
 	"testing"
@@ -23,14 +24,14 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 			name: "CheckPRTitlePrefixesEmptyString",
 			fields: fields{
 				settings: Settings{
-					titlePrefixes:    "",
-					pullRequestTitle: pullRequestTitle,
+					prefixes: "",
+					title:    pullRequestTitle,
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Skip, message: "No prefixes to check", id: "prefix"}},
+					steps:    []Step{{status: Skip, message: PrefixSkipMsg, id: PrefixStepID}},
 					errors:   0,
 				}
 			},
@@ -39,14 +40,14 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 			name: "CheckPRTitlePrefixesValidString",
 			fields: fields{
 				settings: Settings{
-					titlePrefixes:    "feat:",
-					pullRequestTitle: pullRequestTitle,
+					prefixes: "feat:",
+					title:    pullRequestTitle,
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Success, message: "PR title has required prefix", id: "prefix"}},
+					steps:    []Step{{status: Success, message: PrefixSuccesMsg, id: PrefixStepID}},
 					errors:   0,
 				}
 			},
@@ -55,15 +56,19 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 			name: "CheckPRTitlePrefixesInvalidString",
 			fields: fields{
 				settings: Settings{
-					titlePrefixes:    "chore:",
-					pullRequestTitle: pullRequestTitle,
+					prefixes: "chore:",
+					title:    pullRequestTitle,
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Err, message: "PR title does not have any required prefix chore:", id: "prefix"}},
-					errors:   1,
+					steps: []Step{{
+						status:  Err,
+						message: fmt.Sprintf(PrefixErrMsg, settings.prefixes),
+						id:      PrefixStepID,
+					}},
+					errors: 1,
 				}
 			},
 		},
@@ -94,14 +99,14 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 			name: "CheckPRTitleRegexEpEmptyString",
 			fields: fields{
 				settings: Settings{
-					titleRegexep:     "",
-					pullRequestTitle: "feat: add a new feature",
+					regexp: "",
+					title:  "feat: add a new feature",
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Skip, message: "No regexep to check", id: "regexep"}},
+					steps:    []Step{{status: Skip, message: RegexpSkipMsg, id: RegexpStepID}},
 					errors:   0,
 				}
 			},
@@ -110,14 +115,14 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 			name: "CheckPRTitleRegexEpValidRegex",
 			fields: fields{
 				settings: Settings{
-					titleRegexep:     `^feat:.*$`,
-					pullRequestTitle: "feat: add a new feature",
+					regexp: `^feat:.*$`,
+					title:  "feat: add a new feature",
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Success, message: "Regular expression check passed", id: "regexep"}},
+					steps:    []Step{{status: Success, message: RegexpSuccesMsg, id: RegexpStepID}},
 					errors:   0,
 				}
 			},
@@ -126,14 +131,14 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 			name: "CheckPRTitleRegexEpInvalidRegex",
 			fields: fields{
 				settings: Settings{
-					titleRegexep:     `^chore:.*$`,
-					pullRequestTitle: "feat: add a new feature",
+					regexp: `^chore:.*$`,
+					title:  "feat: add a new feature",
 				},
 			},
 			want: func(settings Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
-					steps:    []Step{{status: Err, message: "PR title does not match specified regular expression", id: "regexep"}},
+					steps:    []Step{{status: Err, message: RegexpErrMsg, id: RegexpStepID}},
 					errors:   1,
 				}
 			},
@@ -183,7 +188,7 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
-					steps:    []Step{{status: Skip, message: "No labels to check", id: "labels"}},
+					steps:    []Step{{status: Skip, message: LabelsSkipMsg, id: LabelsStepID}},
 					errors:   0,
 				}
 			},
@@ -200,7 +205,7 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
-					steps:    []Step{{status: Skip, message: "Skipping, detected skip label", id: "labels", exit: true}},
+					steps:    []Step{{status: Skip, message: LabelsSkipMsg, id: LabelsStepID, exit: true}},
 					errors:   0,
 				}
 			},
@@ -217,7 +222,7 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
-					steps:    []Step{{status: Success, message: "No skip labels detected", id: "labels"}},
+					steps:    []Step{{status: Success, message: LabelsSuccesMsg, id: LabelsStepID}},
 					errors:   0,
 				}
 			},
@@ -238,7 +243,7 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 						{
 							status:  Err,
 							message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
-							id:      "labels",
+							id:      LabelsStepID,
 						},
 					},
 					errors: 1,
@@ -249,8 +254,8 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 			name: "CheckPRLabelsInvalidSkipOnGithubError",
 			fields: fields{
 				settings: Settings{
-					skipOnLabels:        "label3,label4",
-					ignoreOnGitHubError: true,
+					skipOnLabels:      "label3,label4",
+					ignoreGitHubError: true,
 				},
 				github: NewGithub(errUrl, "token"),
 			},
@@ -262,7 +267,7 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 						{
 							status:  Skip,
 							message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
-							id:      "labels",
+							id:      LabelsStepID,
 						},
 					},
 					errors: 0,
@@ -344,7 +349,7 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
-					steps:    []Step{{status: Skip, message: "Checklist checks disabled", id: "checklist"}},
+					steps:    []Step{{status: Skip, message: ChecklistSkipMsg, id: ChecklistStepID}},
 					errors:   0,
 				}
 			},
@@ -365,8 +370,8 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 					steps: []Step{
 						{
 							status:  Err,
-							message: "Found 3 unchecked checklist items",
-							id:      "checklist",
+							message: fmt.Sprintf(ChecklistErrMsg, 3),
+							id:      ChecklistStepID,
 						},
 					},
 					errors: 1,
@@ -389,8 +394,8 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 					steps: []Step{
 						{
 							status:  Success,
-							message: "Found 0 unchecked checklist items",
-							id:      "checklist",
+							message: ChecklistSuccesMsg,
+							id:      ChecklistStepID,
 						},
 					},
 					errors: 0,
@@ -401,8 +406,8 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 			name: "CheckPRChecklistInvalidSkipOnGithubError",
 			fields: fields{
 				settings: Settings{
-					checklist:           true,
-					ignoreOnGitHubError: true,
+					checklist:         true,
+					ignoreGitHubError: true,
 				},
 				github: NewGithub(errUrl, "token"),
 				prBody: prBodyUnchecked,
@@ -438,7 +443,7 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 					steps: []Step{{
 						status:  Err,
 						message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
-						id:      "checklist",
+						id:      ChecklistStepID,
 					}},
 					errors: 1,
 				}
