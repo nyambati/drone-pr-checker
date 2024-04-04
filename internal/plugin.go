@@ -62,7 +62,7 @@ func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
 	prefixes := strings.Split(prc.settings.prefixes, ",")
 
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(prc.settings.title, prefix) {
+		if strings.HasPrefix(strings.ToLower(prc.settings.title), strings.ToLower(prefix)) {
 			prc.steps = append(prc.steps, Step{status: Success, message: PrefixSuccesMsg, id: PrefixStepID})
 			return prc
 		}
