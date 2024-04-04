@@ -1,4 +1,4 @@
-name: "PR Title Checker"
+name: pr
 on:
   pull_request:
     types:
@@ -7,8 +7,8 @@ on:
       - synchronize
 
 jobs:
-  check_pr_title:
-    name: check pullrequest title
+  pr:
+    name: check pull request title
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
