@@ -202,16 +202,21 @@ func (prc *PullRequestChecker) Report() {
 		switch step.status {
 		case Err:
 			fmt.Println("❌", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
-			prc.errors++
 		case Success:
 			fmt.Println("✅", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
 		case Skip:
 			fmt.Println("🦘", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
+			// Exit gracefully when exit is detected. Comes from the labels check.
+			if step.exit {
+				os.Exit(0)
+			}
 		}
 	}
+
 	if condition := prc.errors > 0; condition {
 		log.Fatal(fmt.Sprintf("Found %d errors", prc.errors))
 	}
+
 }
 
 func GetEnvVar(name, defaultValue string) string {
