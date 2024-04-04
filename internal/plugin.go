@@ -62,7 +62,7 @@ func (prc *PullRequestChecker) CheckPRTitlePrefixes() *PullRequestChecker {
 	prefixes := strings.Split(prc.settings.prefixes, ",")
 
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(prc.settings.title, prefix) {
+		if strings.HasPrefix(strings.ToLower(prc.settings.title), strings.ToLower(prefix)) {
 			prc.steps = append(prc.steps, Step{status: Success, message: PrefixSuccesMsg, id: PrefixStepID})
 			return prc
 		}
@@ -202,16 +202,21 @@ func (prc *PullRequestChecker) Report() {
 		switch step.status {
 		case Err:
 			fmt.Println("❌", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
-			prc.errors++
 		case Success:
 			fmt.Println("✅", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
 		case Skip:
 			fmt.Println("🦘", slog.String("step", step.id), slog.String("message", strings.ToLower(step.message)))
+			// Exit gracefully when exit is detected. Comes from the labels check.
+			if step.exit {
+				os.Exit(0)
+			}
 		}
 	}
+
 	if condition := prc.errors > 0; condition {
-		log.Fatal(fmt.Sprintf("Found %d errors", prc.errors))
+		log.Fatalf("Found %d errors", prc.errors)
 	}
+
 }
 
 func GetEnvVar(name, defaultValue string) string {

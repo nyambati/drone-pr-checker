@@ -24,5 +24,7 @@ func main() {
 	prc.CheckPRLabels().
 		CheckPRTitlePrefixes().
 		CheckPRTitleRegexep().
-		CheckPRChecklist().Report()
+		CheckPRChecklist().
+		Report()
+
 }
