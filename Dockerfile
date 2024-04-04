@@ -29,6 +29,6 @@ COPY --from=builder /app/drone-pr-checker .
 
 # Expose port 8080 to the outside world
 EXPOSE 8080
-.r
+
 # Command to run the executable
 CMD ["./drone-pr-checker"]
