@@ -214,7 +214,7 @@ func (prc *PullRequestChecker) Report() {
 	}
 
 	if condition := prc.errors > 0; condition {
-		log.Fatal(fmt.Sprintf("Found %d errors", prc.errors))
+		log.Fatalf("Found %d errors", prc.errors)
 	}
 
 }
