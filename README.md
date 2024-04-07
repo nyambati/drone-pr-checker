@@ -8,25 +8,18 @@ Drone plugin to run various checks on the Pull request as part of review process
 
 The following settings changes this plugin's behavior,
 
-| Property            |  Type   |      Default |
-| ------------------- | :-----: | -----------: |
-| `prefixes`          | string  |           "" |
-| `regexp`            | string  |           "" |
-| `skipOnLabels`      | string  |           "" |
-| `ignoreGithubError` | boolean |        false |
-| `checklist`         | boolean |        false |
-| `checklistTitle`    | string  | ## Checklist |
-
-- `prefixes`: The accepted pull request title prefixes.
-- `regexp`: The regular expression for a valid pull request title.
-- `skipOnLabels`: The labelat which the checks will be disabled.
-- `ignoreGithubError`: Ignores github error when fetching Pull request labels and checklist.
-- `checklist`: Ensures that all checklist items are checked.
-- `checklistTitle`: The title used to find the checklist.
+| Property            |  Type   | Description                                    |   Default    |
+| :------------------ | :-----: | :--------------------------------------------- | :----------: |
+| `prefixes`          |  list   | A list of accepted PR title prefixes           |      []      |
+| `regexp`            | string  | A regular expression for a valid PR title      |      ""      |
+| `skipOnLabels`      |  list   | A list of on which the checks will be disabled |      []      |
+| `ignoreGithubError` | boolean | A boolean value to ignore github api errors    |    false     |
+| `checklist`         | boolean | A boolean value to enable checklist checks     |    false     |
+| `checklistTitle`    | string  | A string value from which to find PR checklist | ## Checklist |
 
 ## Credentials
 
-- `github_token`: This will be used to fetch pull request labels and content from github.
+- `github_token`: its required to access pull request data to check for labels and checklists on the PR content.
 
 ## Pipeline
 
@@ -39,12 +32,12 @@ steps:
   - name: check pull request
     image: thomasnyambati/drone-pr-checker
     settings:
-      prefixes:
-      regexp:
-      skipOnLabels:
-      ignoreGithubError:
-      checklist:
-      checklistTitle:
+      prefixes: []
+      regexp: ""
+      skipOnLabels: []
+      ignoreGithubError: false
+      checklist: false
+      checklistTitle: ""
     environment:
       GITHUB_TOKEN:
         from_secret: github_token
@@ -99,8 +92,5 @@ EOF
 Run the plugin
 
 ```shell
-docker run --rm \
-  --env-file=.env \
-  --volume "$PWD:/workspace" \
-  thomasnyambati/drone-pr-checker:latest
+docker run --rm --env-file=.env  --volume "$PWD:/workspace" thomasnyambati/drone-pr-checker:main
 ```
