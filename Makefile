@@ -6,3 +6,6 @@ test:
 
 build:
 	@docker build -t thomasnyambati/drone-pr-checker .
+
+run:
+	@go run main.go

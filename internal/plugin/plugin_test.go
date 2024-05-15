@@ -1,34 +1,52 @@
-package internal
+package plugin
 
 import (
+	"errors"
 	"fmt"
-	"net/url"
 	"reflect"
 	"testing"
 
-	"github.com/h2non/gock"
+	"github.com/google/go-github/v61/github"
+	"github.com/nyambati/drone-pr-checker/internal/config"
+	g "github.com/nyambati/drone-pr-checker/internal/github"
 )
 
 var pullRequestTitle = "feat: add a new feature"
 
+type TestGithubClient struct {
+	body   *string
+	labels []*github.Label
+	err    error
+}
+
+func (t *TestGithubClient) GetPullRequest(owner string, repo string, number int) (*github.PullRequest, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
+	return &github.PullRequest{
+		Body:   t.body,
+		Labels: t.labels,
+	}, nil
+}
+
 func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 	type fields struct {
-		settings Settings
+		settings config.Settings
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   func(settings Settings) *PullRequestChecker
+		want   func(settings config.Settings) *PullRequestChecker
 	}{
 		{
 			name: "CheckPRTitlePrefixesEmptyString",
 			fields: fields{
-				settings: Settings{
-					prefixes: "",
-					title:    pullRequestTitle,
+				settings: config.Settings{
+					Prefixes: "",
+					Title:    pullRequestTitle,
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps:    []Step{{status: Skip, message: PrefixSkipMsg, id: PrefixStepID}},
@@ -39,12 +57,12 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 		{
 			name: "CheckPRTitlePrefixesValidString",
 			fields: fields{
-				settings: Settings{
-					prefixes: "feat:",
-					title:    pullRequestTitle,
+				settings: config.Settings{
+					Prefixes: "feat:",
+					Title:    pullRequestTitle,
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps:    []Step{{status: Success, message: PrefixSuccesMsg, id: PrefixStepID}},
@@ -55,17 +73,17 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 		{
 			name: "CheckPRTitlePrefixesInvalidString",
 			fields: fields{
-				settings: Settings{
-					prefixes: "chore:",
-					title:    pullRequestTitle,
+				settings: config.Settings{
+					Prefixes: "chore:",
+					Title:    pullRequestTitle,
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps: []Step{{
 						status:  Err,
-						message: fmt.Sprintf(PrefixErrMsg, settings.prefixes),
+						message: fmt.Sprintf(PrefixErrMsg, settings.Prefixes),
 						id:      PrefixStepID,
 					}},
 					errors: 1,
@@ -78,7 +96,7 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 			prc := &PullRequestChecker{
 				settings: tt.fields.settings,
 			}
-			if got := prc.CheckPRTitlePrefixes(); !reflect.DeepEqual(got, tt.want(tt.fields.settings)) {
+			if got := prc.checkPRTitlePrefixes(); !reflect.DeepEqual(got, tt.want(tt.fields.settings)) {
 				t.Errorf("PullRequestChecker.CheckPRTitlePrefixes() = %v, want %v", got, tt.want(tt.fields.settings))
 			}
 		})
@@ -88,22 +106,22 @@ func TestPullRequestChecker_CheckPRTitlePrefixes(t *testing.T) {
 func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 
 	type fields struct {
-		settings Settings
+		settings config.Settings
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   func(settings Settings) *PullRequestChecker
+		want   func(settings config.Settings) *PullRequestChecker
 	}{
 		{
 			name: "CheckPRTitleRegexEpEmptyString",
 			fields: fields{
-				settings: Settings{
-					regexp: "",
-					title:  "feat: add a new feature",
+				settings: config.Settings{
+					Regexp: "",
+					Title:  "feat: add a new feature",
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps:    []Step{{status: Skip, message: RegexpSkipMsg, id: RegexpStepID}},
@@ -114,12 +132,12 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 		{
 			name: "CheckPRTitleRegexEpValidRegex",
 			fields: fields{
-				settings: Settings{
-					regexp: `^feat:.*$`,
-					title:  "feat: add a new feature",
+				settings: config.Settings{
+					Regexp: `^feat:.*$`,
+					Title:  "feat: add a new feature",
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps:    []Step{{status: Success, message: RegexpSuccesMsg, id: RegexpStepID}},
@@ -130,12 +148,12 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 		{
 			name: "CheckPRTitleRegexEpInvalidRegex",
 			fields: fields{
-				settings: Settings{
-					regexp: `^chore:.*$`,
-					title:  "feat: add a new feature",
+				settings: config.Settings{
+					Regexp: `^chore:.*$`,
+					Title:  "feat: add a new feature",
 				},
 			},
-			want: func(settings Settings) *PullRequestChecker {
+			want: func(settings config.Settings) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					steps:    []Step{{status: Err, message: RegexpErrMsg, id: RegexpStepID}},
@@ -149,7 +167,7 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 			prc := &PullRequestChecker{
 				settings: tt.fields.settings,
 			}
-			if got := prc.CheckPRTitleRegexep(); !reflect.DeepEqual(got, tt.want(tt.fields.settings)) {
+			if got := prc.checkPRTitleRegexep(); !reflect.DeepEqual(got, tt.want(tt.fields.settings)) {
 				t.Errorf("PullRequestChecker.CheckPRTitleRegexep() = %v, want %v", got, tt.want(tt.fields.settings))
 			}
 		})
@@ -157,34 +175,22 @@ func TestPullRequestChecker_CheckPRTitleRegexep(t *testing.T) {
 }
 
 func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
-	gurl := &url.URL{
-		Scheme: "http",
-		Host:   "localhost",
-		Path:   "/repos/sample/pulls/1",
-	}
-
-	errUrl := &url.URL{
-		Scheme: "http",
-		Host:   "localhost",
-		Path:   "/repos/sample/pulls/2",
-	}
-
 	type fields struct {
-		settings Settings
-		github   GitHub
+		settings config.Settings
+		github   g.GitHubInterface
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   func(settings Settings, github GitHub) *PullRequestChecker
+		want   func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker
 	}{
 		{
 			name: "CheckPRLabelsEmptyString",
 			fields: fields{
-				settings: Settings{},
-				github:   NewGithub(gurl, "token"),
+				settings: config.Settings{},
+				github:   &TestGithubClient{},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -196,12 +202,16 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 		{
 			name: "CheckPRLabelsMatchLabels",
 			fields: fields{
-				settings: Settings{
-					skipOnLabels: "label1",
+				settings: config.Settings{SkipOnLabels: "label1"},
+				github: &TestGithubClient{
+					labels: []*github.Label{
+						{
+							Name: github.String("label1"),
+						},
+					},
 				},
-				github: NewGithub(gurl, "token"),
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -213,12 +223,10 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 		{
 			name: "CheckPRLabelsNoMatchLabels",
 			fields: fields{
-				settings: Settings{
-					skipOnLabels: "label3,label4",
-				},
-				github: NewGithub(gurl, "token"),
+				settings: config.Settings{SkipOnLabels: "label3,label4"},
+				github:   &TestGithubClient{},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -230,19 +238,19 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 		{
 			name: "CheckPRLabelsSkipOnGithubError",
 			fields: fields{
-				settings: Settings{
-					skipOnLabels: "label3,label4",
+				settings: config.Settings{SkipOnLabels: "label3,label4"},
+				github: &TestGithubClient{
+					err: errors.New("Error"),
 				},
-				github: NewGithub(errUrl, "token"),
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
 					steps: []Step{
 						{
 							status:  Err,
-							message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
+							message: "Error",
 							id:      LabelsStepID,
 						},
 					},
@@ -253,20 +261,22 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 		{
 			name: "CheckPRLabelsInvalidSkipOnGithubError",
 			fields: fields{
-				settings: Settings{
-					skipOnLabels:      "label3,label4",
-					ignoreGitHubError: true,
+				settings: config.Settings{
+					SkipOnLabels:      "label3,label4",
+					IgnoreGitHubError: true,
 				},
-				github: NewGithub(errUrl, "token"),
+				github: &TestGithubClient{
+					err: errors.New("Error"),
+				},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
 					steps: []Step{
 						{
 							status:  Skip,
-							message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
+							message: "Error",
 							id:      LabelsStepID,
 						},
 					},
@@ -277,21 +287,11 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer gock.Off()
-
-			gock.New("http://localhost").
-				MatchHeader("Authorization", "Bearer token").
-				MatchHeader("Accept", "application/vnd.github+json").
-				MatchHeader("X-GitHub-Api-Version", "2022-11-28").
-				Get("/repos/sample/pulls/1").
-				Reply(200).
-				JSON(map[string]interface{}{"labels": []Label{{Name: "label1"}, {Name: "label2"}}})
-
 			prc := &PullRequestChecker{
 				settings: tt.fields.settings,
 				github:   tt.fields.github,
 			}
-			if got := prc.CheckPRLabels(); !reflect.DeepEqual(got, tt.want(tt.fields.settings, tt.fields.github)) {
+			if got := prc.checkPRLabels(); !reflect.DeepEqual(got, tt.want(tt.fields.settings, tt.fields.github)) {
 				t.Errorf("PullRequestChecker.CheckPRLabels() = %v, want %v", got, tt.want(tt.fields.settings, tt.fields.github))
 			}
 		})
@@ -299,18 +299,6 @@ func TestPullRequestChecker_CheckPRLabels(t *testing.T) {
 }
 
 func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
-
-	gurl := &url.URL{
-		Scheme: "http",
-		Host:   "localhost",
-		Path:   "/repos/sample/pulls/1",
-	}
-
-	errUrl := &url.URL{
-		Scheme: "http",
-		Host:   "localhost",
-		Path:   "/repos/sample/pulls/2",
-	}
 
 	prBodyUnchecked := []byte(`
 ## Checklist
@@ -329,23 +317,23 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 		`,
 	)
 	type fields struct {
-		settings Settings
-		github   GitHub
-		prBody   []byte
+		settings config.Settings
+		github   g.GitHubInterface
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   func(settings Settings, github GitHub) *PullRequestChecker
+		want   func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker
 	}{
 		{
 			name: "CheckPRChecklistDisabled",
 			fields: fields{
-				settings: Settings{},
-				github:   NewGithub(gurl, "token"),
-				prBody:   prBodyUnchecked,
+				settings: config.Settings{},
+				github: &TestGithubClient{
+					body: github.String(string(prBodyUnchecked)),
+				},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -357,13 +345,12 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 		{
 			name: "CheckPRChecklistUnchecked",
 			fields: fields{
-				github: NewGithub(gurl, "token"),
-				prBody: prBodyUnchecked,
-				settings: Settings{
-					checklist: true,
+				settings: config.Settings{Checklist: true},
+				github: &TestGithubClient{
+					body: github.String(string(prBodyUnchecked)),
 				},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -381,13 +368,12 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 		{
 			name: "CheckPRChecklistChecked",
 			fields: fields{
-				github: NewGithub(gurl, "token"),
-				prBody: prBodyChecked,
-				settings: Settings{
-					checklist: true,
+				settings: config.Settings{Checklist: true},
+				github: &TestGithubClient{
+					body: github.String(string(prBodyChecked)),
 				},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
@@ -405,21 +391,21 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 		{
 			name: "CheckPRChecklistInvalidSkipOnGithubError",
 			fields: fields{
-				settings: Settings{
-					checklist:         true,
-					ignoreGitHubError: true,
+				settings: config.Settings{
+					Checklist:         true,
+					IgnoreGitHubError: true,
 				},
-				github: NewGithub(errUrl, "token"),
-				prBody: prBodyUnchecked,
+
+				github: &TestGithubClient{err: errors.New("Error")},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
 					steps: []Step{
 						{
 							status:  Skip,
-							message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
+							message: "Error",
 							id:      "checklist",
 						},
 					},
@@ -430,19 +416,18 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 		{
 			name: "CheckPRChecklistGitHubError",
 			fields: fields{
-				settings: Settings{
-					checklist: true,
+				settings: config.Settings{
+					Checklist: true,
 				},
-				github: NewGithub(errUrl, "token"),
-				prBody: prBodyUnchecked,
+				github: &TestGithubClient{err: errors.New("Error")},
 			},
-			want: func(settings Settings, github GitHub) *PullRequestChecker {
+			want: func(settings config.Settings, github g.GitHubInterface) *PullRequestChecker {
 				return &PullRequestChecker{
 					settings: settings,
 					github:   github,
 					steps: []Step{{
 						status:  Err,
-						message: "Get \"http://localhost/repos/sample/pulls/2\": gock: cannot match any request",
+						message: "Error",
 						id:      ChecklistStepID,
 					}},
 					errors: 1,
@@ -452,27 +437,11 @@ func TestPullRequestChecker_CheckPRChecklist(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer gock.Off()
-
-			data := PullRequest{
-				Labels: []Label{{Name: "label 1"}, {Name: "label 2"}},
-				Body:   string(tt.fields.prBody),
-			}
-
-			gock.New("http://localhost").
-				MatchHeader("Authorization", "Bearer token").
-				MatchHeader("Accept", "application/vnd.github+json").
-				MatchHeader("X-GitHub-Api-Version", "2022-11-28").
-				Get("/repos/sample/pulls/1").
-				Reply(200).
-				JSON(data)
-
 			prc := &PullRequestChecker{
 				settings: tt.fields.settings,
 				github:   tt.fields.github,
 			}
-
-			if got := prc.CheckPRChecklist(); !reflect.DeepEqual(got, tt.want(tt.fields.settings, tt.fields.github)) {
+			if got := prc.checkPRChecklist(); !reflect.DeepEqual(got, tt.want(tt.fields.settings, tt.fields.github)) {
 				t.Errorf("PullRequestChecker.CheckPRChecklist() = %v, want %v", got, tt.want(tt.fields.settings, tt.fields.github))
 			}
 		})
