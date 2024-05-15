@@ -33,17 +33,19 @@ var envVars = []string{
 	pullRequest,
 }
 
-func New() *Config {
+func New() (*Config, error) {
 	v := viper.New()
 	v.SetDefault(checklistTitle, "## Checklist")
 	v.SetDefault(ignoreGitHubError, true)
 	v.SetDefault(checklist, false)
 
 	for _, envVar := range envVars {
-		v.BindEnv(envVar)
+		if err := v.BindEnv(envVar); err != nil {
+			return nil, err
+		}
 	}
 
-	return &Config{
+	cfg := &Config{
 		Settings: Settings{
 			Prefixes:          v.GetString(prefixes),
 			Regexp:            v.GetString(regexp),
@@ -58,9 +60,14 @@ func New() *Config {
 		},
 		Github: GitHub{Token: v.GetString(githubToken)},
 	}
+
+	return cfg.validate()
 }
 
-func (config *Config) Validate() error {
+func (config *Config) validate() (*Config, error) {
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	return validate.Struct(config)
+	if err := validate.Struct(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }

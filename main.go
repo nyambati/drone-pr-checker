@@ -9,9 +9,9 @@ import (
 )
 
 func main() {
-	config := config.New()
+	config, err := config.New()
 
-	if err := config.Validate(); err != nil {
+	if err != nil {
 		log.Fatal(err)
 	}
 
