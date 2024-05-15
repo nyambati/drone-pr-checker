@@ -1,4 +1,23 @@
-package internal
+package plugin
+
+type State int
+
+const (
+	Success State = iota
+	Err
+	Skip
+)
+
+type Step struct {
+	status  State
+	message string
+	id      string
+	exit    bool
+}
+
+type PluginInterface interface {
+	Report()
+}
 
 const (
 	PrefixStepID       = "prefix"
