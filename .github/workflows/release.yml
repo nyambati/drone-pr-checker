@@ -2,20 +2,38 @@ name: release
 on:
   push:
     branches:
-      - "main"
-
+      - main
 jobs:
-  release:
+  semantic-release:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Semantic Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          go-version: 1.22
-      - uses: go-semantic-release/action@v1
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v3
         with:
-          hooks: goreleaser
+          node-version: "lts/*"
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v2
+        id: semantic
+        with:
+          semantic_version: 17
+          extra_plugins: |
+            @semantic-release/changelog@5
+            @semantic-release/exec@5
+            @semantic-release/git@9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Do something when a new release published
+      #   if: steps.semantic.outputs.new_release_published == 'true'
+      #   run: |
+      #     echo ${{ steps.semantic.outputs.new_release_version }}
+      #     echo ${{ steps.semantic.outputs.new_release_major_version }}
+      #     echo ${{ steps.semantic.outputs.new_release_minor_version }}
+      #     echo ${{ steps.semantic.outputs.new_release_patch_version }}
